@@ -13,7 +13,7 @@ const props = defineProps({
   product: { type: Object, required: true }, // { ean, name, image_url }
   excludedLocationIds: { type: Array, default: () => [] },
 })
-const emit = defineEmits(['close'])
+const emit = defineEmits(['close', 'assigned'])
 
 const household = useHouseholdStore()
 const isAssigning = ref(false)
@@ -23,14 +23,17 @@ const availableLocations = computed(() =>
   household.locations.filter((location) => !props.excludedLocationIds.includes(location.id))
 )
 
-async function onSelectLocation(locationId) {
+async function onSelectLocation(location) {
   if (isAssigning.value) return
   isAssigning.value = true
   errorMessage.value = ''
 
   try {
-    await household.assignLocation(props.product, locationId)
-    emit('close')
+    await household.assignLocation(props.product, location.id)
+    // Hands off into the same +/- adjuster used elsewhere (Fall A) instead
+    // of just closing at quantity 1 - so a bulk purchase ("bought 3 of
+    // these") can be reflected immediately without a second scan.
+    emit('assigned', { ean: props.product.ean, product: props.product, location, quantity: 1 })
   } catch {
     errorMessage.value = 'Konnte nicht gespeichert werden.'
   } finally {
@@ -55,7 +58,7 @@ async function onSelectLocation(locationId) {
           :key="location.id"
           :name="location.name"
           :icon="location.icon"
-          @select="onSelectLocation(location.id)"
+          @select="onSelectLocation(location)"
         />
       </div>
 

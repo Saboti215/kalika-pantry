@@ -74,13 +74,25 @@ function openStock(row) {
 }
 
 // KnownStockSheet reports back every row's settled quantity when it closes,
-// so the list behind it reflects any +1/-1 taps without a full reload.
+// so the list behind it reflects any +1/-1 taps without a full reload. A row
+// that isn't found yet (just created via onAssigned below) is inserted
+// instead of silently ignored.
 function onSheetClose(updatedRows) {
   if (Array.isArray(updatedRows) && activeStock.value) {
     const ean = activeStock.value.ean
     for (const { locationId, quantity } of updatedRows) {
       const row = stockRows.value.find((r) => r.product_ean === ean && r.locations?.id === locationId)
-      if (row) row.quantity = quantity
+      if (row) {
+        row.quantity = quantity
+        continue
+      }
+      const location = activeStock.value.stocks.find((s) => s.location.id === locationId)?.location
+      if (location) {
+        stockRows.value = [
+          { product_ean: ean, quantity, products: activeStock.value.product, locations: location },
+          ...stockRows.value,
+        ]
+      }
     }
   }
   activeStock.value = null
@@ -94,11 +106,13 @@ function onAddLocation({ product, excludedLocationIds }) {
   activeAssignment.value = { product, excludedLocationIds }
 }
 
-// A brand new stock row was likely just created at another location -
-// reload rather than patch, since we don't have that row's full joined data.
-async function onAssignmentClose() {
+// Fall B just created a fresh stock row at quantity 1 - hand off into the
+// same +/- adjuster instead of closing immediately, so a bulk purchase can
+// be reflected right away without a second scan. onSheetClose (above) adds
+// the new row to the list once this sheet closes.
+function onAssigned({ ean, product, location, quantity }) {
   activeAssignment.value = null
-  await loadStock()
+  activeStock.value = { ean, product, stocks: [{ location, quantity }] }
 }
 </script>
 
@@ -190,7 +204,8 @@ async function onAssignmentClose() {
       v-if="activeAssignment"
       :product="activeAssignment.product"
       :excluded-location-ids="activeAssignment.excludedLocationIds"
-      @close="onAssignmentClose"
+      @close="activeAssignment = null"
+      @assigned="onAssigned"
     />
   </div>
 </template>

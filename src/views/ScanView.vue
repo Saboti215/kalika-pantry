@@ -49,6 +49,14 @@ function onAddLocation({ product, excludedLocationIds }) {
   activeCase.value = 'B'
 }
 
+// Fall B just created a fresh stock row at quantity 1 - hand off into the
+// same +/- adjuster as Fall A instead of closing immediately, so a bulk
+// purchase can be reflected right away without a second scan.
+function onAssigned({ ean, product, location, quantity }) {
+  lookupResult.value = { case: 'A', ean, product, stocks: [{ location, quantity }] }
+  activeCase.value = 'A'
+}
+
 // Fallback for when the camera can't read a barcode at all - pauses the
 // scanner so it doesn't also decode something while the sheet is open.
 function openManualBarcodeEntry() {
@@ -108,6 +116,7 @@ function onManualBarcodeCancelled() {
       :product="lookupResult.product"
       :excluded-location-ids="lookupResult.excludedLocationIds || []"
       @close="closeSheet"
+      @assigned="onAssigned"
     />
     <ManualEntrySheet
       v-else-if="activeCase === 'C'"
