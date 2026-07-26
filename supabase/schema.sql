@@ -51,9 +51,17 @@ create table if not exists products (
   ean text not null,
   name text not null,
   image_url text,
+  -- Null means "no threshold set". Compared against the sum of quantity
+  -- across all of a product's stock rows (it can sit at several locations),
+  -- not any single row, to drive the "bald leer" warning in the Bestand view.
+  min_quantity int,
   created_at timestamptz not null default now(),
   primary key (household_id, ean)
 );
+
+-- Households created before this column existed need it added on - safe to
+-- re-run alongside `create table if not exists` above.
+alter table products add column if not exists min_quantity int;
 
 -- Stock rows are never deleted when quantity hits 0 - that's what lets the
 -- next scan of the same product remember its location.

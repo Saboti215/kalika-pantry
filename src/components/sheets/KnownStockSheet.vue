@@ -17,6 +17,9 @@ const household = useHouseholdStore()
 // per row as the user taps without touching the parent's data.
 const rows = ref(props.stock.stocks.map((entry) => ({ ...entry })))
 const errorMessage = ref('')
+// One threshold per product (not per location) - shown once here rather
+// than repeated per row.
+const minQuantity = ref(props.stock.product.min_quantity ?? '')
 let closeTimeoutId = null
 
 function currentState() {
@@ -48,6 +51,15 @@ async function adjust(row, delta) {
   }
 
   scheduleClose()
+}
+
+async function saveMinQuantity() {
+  const value = minQuantity.value === '' ? null : Number(minQuantity.value)
+  try {
+    await household.updateProductMinQuantity(props.stock.ean, value)
+  } catch {
+    errorMessage.value = 'Mindestbestand konnte nicht gespeichert werden.'
+  }
 }
 
 // A product can be stocked at more than one location - this hands off to
@@ -95,6 +107,19 @@ onBeforeUnmount(() => clearTimeout(closeTimeoutId))
       </div>
 
       <p v-if="errorMessage" class="text-sm text-red-400">{{ errorMessage }}</p>
+
+      <div class="flex items-center gap-2 text-sm text-slate-400">
+        <span>Mindestbestand</span>
+        <input
+          v-model.number="minQuantity"
+          type="number"
+          min="0"
+          inputmode="numeric"
+          placeholder="—"
+          class="w-16 rounded-lg bg-slate-800 px-2 py-1 text-center text-slate-100 outline-none focus:border focus:border-emerald-500"
+          @change="saveMinQuantity"
+        />
+      </div>
 
       <button type="button" class="text-sm text-emerald-400" @click="onAddLocation">+ Weiteren Lagerort</button>
     </div>

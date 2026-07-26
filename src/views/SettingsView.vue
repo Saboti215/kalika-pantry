@@ -3,10 +3,12 @@ import { ref, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import { useHouseholdStore } from '../stores/household'
+import { useToast } from '../composables/useToast'
 
 const router = useRouter()
 const auth = useAuthStore()
 const household = useHouseholdStore()
+const { showToast } = useToast()
 
 const members = ref([])
 const newLocationName = ref('')
@@ -90,9 +92,23 @@ async function confirmDeleteLocation(location) {
 
     await household.deleteLocation(location.id)
   } catch (err) {
-    window.alert(err.message ?? 'Konnte nicht gelöscht werden.')
+    showToast(err.message ?? 'Konnte nicht gelöscht werden.', 'error')
   } finally {
     deletingLocationId.value = null
+  }
+}
+
+// Touch-friendly reordering - native HTML5 drag-and-drop doesn't work
+// reliably via touch on iOS Safari, and a drag library is too much weight
+// for this one rarely-used settings action.
+async function moveLocation(index, direction) {
+  const targetIndex = index + direction
+  if (targetIndex < 0 || targetIndex >= household.locations.length) return
+
+  try {
+    await household.swapLocationOrder(household.locations[index], household.locations[targetIndex])
+  } catch (err) {
+    showToast(err.message ?? 'Konnte nicht verschoben werden.', 'error')
   }
 }
 
@@ -150,7 +166,7 @@ async function onSignOut() {
       <section class="space-y-2">
         <h2 class="text-sm font-medium text-slate-400">Lagerorte</h2>
         <ul class="divide-y divide-slate-800 rounded-xl border border-slate-700 bg-slate-900">
-          <li v-for="location in household.locations" :key="location.id" class="px-4 py-3">
+          <li v-for="(location, index) in household.locations" :key="location.id" class="px-4 py-3">
             <div v-if="editingLocationId === location.id" class="flex gap-2">
               <input v-model="editingIcon" class="w-14 rounded-lg bg-slate-800 px-2 py-2 text-center" placeholder="🥫" />
               <input v-model="editingName" class="flex-1 rounded-lg bg-slate-800 px-3 py-2" />
@@ -159,6 +175,24 @@ async function onSignOut() {
               </button>
             </div>
             <div v-else class="flex items-center gap-3">
+              <div class="flex shrink-0 flex-col">
+                <button
+                  type="button"
+                  class="px-1 text-slate-500 disabled:opacity-30"
+                  :disabled="index === 0"
+                  @click="moveLocation(index, -1)"
+                >
+                  ▲
+                </button>
+                <button
+                  type="button"
+                  class="px-1 text-slate-500 disabled:opacity-30"
+                  :disabled="index === household.locations.length - 1"
+                  @click="moveLocation(index, 1)"
+                >
+                  ▼
+                </button>
+              </div>
               <button type="button" class="flex flex-1 items-center gap-3 text-left" @click="startEditingLocation(location)">
                 <span class="text-xl">{{ location.icon || '📦' }}</span>
                 <span>{{ location.name }}</span>

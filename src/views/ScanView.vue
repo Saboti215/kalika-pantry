@@ -4,6 +4,7 @@ import Scanner from '../components/Scanner.vue'
 import KnownStockSheet from '../components/sheets/KnownStockSheet.vue'
 import AssignLocationSheet from '../components/sheets/AssignLocationSheet.vue'
 import ManualEntrySheet from '../components/sheets/ManualEntrySheet.vue'
+import ManualBarcodeEntrySheet from '../components/sheets/ManualBarcodeEntrySheet.vue'
 import { useHouseholdStore } from '../stores/household'
 
 const household = useHouseholdStore()
@@ -12,6 +13,7 @@ const scannerRef = ref(null)
 const isLookingUp = ref(false)
 const activeCase = ref(null) // 'A' | 'B' | 'C' | null
 const lookupResult = ref(null)
+const showManualBarcodeEntry = ref(false)
 
 async function onDecoded(ean) {
   isLookingUp.value = true
@@ -46,6 +48,23 @@ function onAddLocation({ product, excludedLocationIds }) {
   lookupResult.value = { case: 'B', product, excludedLocationIds }
   activeCase.value = 'B'
 }
+
+// Fallback for when the camera can't read a barcode at all - pauses the
+// scanner so it doesn't also decode something while the sheet is open.
+function openManualBarcodeEntry() {
+  scannerRef.value?.pause()
+  showManualBarcodeEntry.value = true
+}
+
+async function onManualBarcodeSubmitted(ean) {
+  showManualBarcodeEntry.value = false
+  await onDecoded(ean) // same cascade a camera scan would go through
+}
+
+function onManualBarcodeCancelled() {
+  showManualBarcodeEntry.value = false
+  scannerRef.value?.resume()
+}
 </script>
 
 <template>
@@ -70,6 +89,14 @@ function onAddLocation({ product, excludedLocationIds }) {
       <div class="rounded-full bg-black/60 px-4 py-2 text-sm text-white">Suche…</div>
     </div>
 
+    <button
+      type="button"
+      class="absolute inset-x-0 bottom-[max(1rem,env(safe-area-inset-bottom))] text-center text-sm text-white/70"
+      @click="openManualBarcodeEntry"
+    >
+      Barcode manuell eingeben
+    </button>
+
     <KnownStockSheet
       v-if="activeCase === 'A'"
       :stock="lookupResult"
@@ -87,6 +114,12 @@ function onAddLocation({ product, excludedLocationIds }) {
       :ean="lookupResult.ean"
       @submitted="onManualNameSubmitted"
       @close="closeSheet"
+    />
+
+    <ManualBarcodeEntrySheet
+      v-if="showManualBarcodeEntry"
+      @submitted="onManualBarcodeSubmitted"
+      @close="onManualBarcodeCancelled"
     />
   </div>
 </template>

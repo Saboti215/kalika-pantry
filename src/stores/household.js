@@ -147,6 +147,25 @@ export const useHouseholdStore = defineStore('household', () => {
     return data
   }
 
+  // Swaps sort_order between two locations - the reordering mechanism behind
+  // the ▲/▼ buttons in Settings (plain up/down instead of drag-and-drop,
+  // since native HTML5 drag doesn't work reliably via touch on iOS Safari).
+  async function swapLocationOrder(locationA, locationB) {
+    const { error: errorA } = await supabase
+      .from('locations')
+      .update({ sort_order: locationB.sort_order })
+      .eq('id', locationA.id)
+    if (errorA) throw errorA
+
+    const { error: errorB } = await supabase
+      .from('locations')
+      .update({ sort_order: locationA.sort_order })
+      .eq('id', locationB.id)
+    if (errorB) throw errorB
+
+    await loadLocations()
+  }
+
   // Number of stock rows currently holding a nonzero quantity at this
   // location - used to warn before a delete, since removing a location
   // cascades and deletes those stock rows in the database (schema.sql,
@@ -180,7 +199,7 @@ export const useHouseholdStore = defineStore('household', () => {
     // of hiding all but the most recently touched one.
     const { data: stockRows, error: stockError } = await supabase
       .from('stock')
-      .select('quantity, updated_at, locations(id, name, icon), products(ean, name, image_url)')
+      .select('quantity, updated_at, locations(id, name, icon), products(ean, name, image_url, min_quantity)')
       .eq('household_id', householdId)
       .eq('product_ean', ean)
       .order('updated_at', { ascending: false })
@@ -287,12 +306,23 @@ export const useHouseholdStore = defineStore('household', () => {
   async function fetchStockOverview() {
     const { data, error } = await supabase
       .from('stock')
-      .select('quantity, updated_at, product_ean, products(ean, name, image_url), locations(id, name, icon)')
+      .select('quantity, updated_at, product_ean, products(ean, name, image_url, min_quantity), locations(id, name, icon)')
       .eq('household_id', currentHouseholdId.value)
       .order('updated_at', { ascending: false })
 
     if (error) throw error
     return data
+  }
+
+  // Null clears the threshold ("no minimum set").
+  async function updateProductMinQuantity(ean, minQuantity) {
+    const { error } = await supabase
+      .from('products')
+      .update({ min_quantity: minQuantity })
+      .eq('household_id', currentHouseholdId.value)
+      .eq('ean', ean)
+
+    if (error) throw error
   }
 
   return {
@@ -311,11 +341,13 @@ export const useHouseholdStore = defineStore('household', () => {
     fetchMembers,
     createLocation,
     updateLocation,
+    swapLocationOrder,
     countStockAtLocation,
     deleteLocation,
     lookupProduct,
     assignLocation,
     adjustStock,
     fetchStockOverview,
+    updateProductMinQuantity,
   }
 })

@@ -11,6 +11,7 @@ const stockRows = ref([])
 const isLoading = ref(true)
 const searchQuery = ref('')
 const selectedLocationId = ref(null) // null = "Alle" (no location filter)
+const sortBy = ref('recent') // 'recent' | 'name' | 'quantity'
 const activeStock = ref(null) // row currently open in the adjust sheet, or null
 const activeAssignment = ref(null) // { product, excludedLocationIds } while adding another location, or null
 
@@ -25,17 +26,43 @@ onMounted(async () => {
 
 const hasActiveFilter = computed(() => searchQuery.value.trim() !== '' || selectedLocationId.value !== null)
 
+// A product can sit at several locations - the "bald leer" warning compares
+// against the total across all of them, not any single row, so splitting
+// stock across locations doesn't falsely look like running low everywhere.
+const totalQuantityByEan = computed(() => {
+  const totals = new Map()
+  for (const row of stockRows.value) {
+    totals.set(row.product_ean, (totals.get(row.product_ean) ?? 0) + row.quantity)
+  }
+  return totals
+})
+
+function isBelowMinimum(row) {
+  const min = row.products?.min_quantity
+  if (min == null) return false
+  return (totalQuantityByEan.value.get(row.product_ean) ?? 0) < min
+}
+
 const filteredRows = computed(() => {
   const query = searchQuery.value.trim().toLowerCase()
-  return stockRows.value.filter((row) => {
+  const filtered = stockRows.value.filter((row) => {
     // Rows with quantity 0 stay in the database (so the location is
     // remembered for the next scan) but are just noise here - only
     // currently-in-stock items are worth showing in a "what do I have" search.
     if (row.quantity <= 0) return false
     const matchesLocation = !selectedLocationId.value || row.locations?.id === selectedLocationId.value
-    const matchesQuery = !query || row.products?.name?.toLowerCase().includes(query)
+    const matchesQuery =
+      !query || row.products?.name?.toLowerCase().includes(query) || row.product_ean?.includes(query)
     return matchesLocation && matchesQuery
   })
+
+  if (sortBy.value === 'name') {
+    return [...filtered].sort((a, b) => a.products.name.localeCompare(b.products.name, 'de'))
+  }
+  if (sortBy.value === 'quantity') {
+    return [...filtered].sort((a, b) => b.quantity - a.quantity)
+  }
+  return filtered // 'recent' - already ordered by updated_at desc from the fetch
 })
 
 function openStock(row) {
@@ -83,12 +110,22 @@ async function onAssignmentClose() {
         <router-link :to="{ name: 'scan' }" class="text-sm text-emerald-400">Zum Scanner</router-link>
       </header>
 
-      <input
-        v-model="searchQuery"
-        type="search"
-        placeholder="Artikel suchen…"
-        class="w-full rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 text-lg outline-none focus:border-emerald-500"
-      />
+      <div class="flex gap-2">
+        <input
+          v-model="searchQuery"
+          type="search"
+          placeholder="Name oder Barcode…"
+          class="min-w-0 flex-1 rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 text-lg outline-none focus:border-emerald-500"
+        />
+        <select
+          v-model="sortBy"
+          class="shrink-0 rounded-xl border border-slate-700 bg-slate-900 px-2 text-sm text-slate-100"
+        >
+          <option value="recent">Neu</option>
+          <option value="name">Name</option>
+          <option value="quantity">Menge</option>
+        </select>
+      </div>
 
       <div class="flex gap-2 overflow-x-auto pb-1">
         <button
@@ -134,6 +171,7 @@ async function onAssignmentClose() {
                 {{ row.locations.icon }} {{ row.locations.name }}
               </p>
             </div>
+            <span v-if="isBelowMinimum(row)" class="shrink-0 text-xs text-amber-400">⚠️ bald leer</span>
             <span class="shrink-0 rounded-full bg-slate-800 px-3 py-1 text-sm font-semibold tabular-nums">
               {{ row.quantity }}
             </span>

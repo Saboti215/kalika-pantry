@@ -93,6 +93,10 @@ export function useScanner({ onDecoded, videoRef }) {
         const barcodes = await detector.detect(frame)
         consecutiveErrors = 0
         if (barcodes.length > 0) {
+          // Instant tactile confirmation that a code was recognized, without
+          // needing to look at the screen. Silently unsupported on iOS
+          // Safari (no Vibration API there at all) - harmless no-op.
+          navigator.vibrate?.(50)
           pause()
           onDecoded(barcodes[0].rawValue)
           return
