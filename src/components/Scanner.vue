@@ -5,7 +5,7 @@ import { useScanner } from '../composables/useScanner'
 const emit = defineEmits(['decoded'])
 const videoRef = ref(null)
 
-const { errorMessage, pause, resume } = useScanner({
+const { errorMessage, justDecoded, pause, resume } = useScanner({
   videoRef,
   onDecoded: (text) => emit('decoded', text),
 })
@@ -22,9 +22,12 @@ defineExpose({ pause, resume })
     </p>
 
     <!-- Matches CROP_AREA in useScanner.js - what's framed here is exactly
-         what gets scanned, not just a decorative aiming aid. -->
+         what gets scanned, not just a decorative aiming aid. Flashes green
+         on a successful decode - the only feedback iOS users actually see,
+         since no iOS browser supports the Vibration API. -->
     <div
-      class="pointer-events-none absolute rounded-2xl border-2 border-white/70 shadow-[0_0_0_9999px_rgba(0,0,0,0.35)]"
+      class="pointer-events-none absolute rounded-2xl border-2 shadow-[0_0_0_9999px_rgba(0,0,0,0.35)] transition-colors duration-150"
+      :class="justDecoded ? 'border-emerald-400 bg-emerald-400/20' : 'border-white/70'"
       style="top: 30%; bottom: 30%; left: 8%; right: 8%"
     />
   </div>

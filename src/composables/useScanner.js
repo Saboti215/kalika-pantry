@@ -29,6 +29,11 @@ export function useScanner({ onDecoded, videoRef }) {
   const isRunning = ref(false)
   const isPaused = ref(false)
   const errorMessage = ref('')
+  // Briefly true right when a barcode is recognized - drives a visual pulse
+  // on the reticle. iOS has no Vibration API at all (true for every browser
+  // there, not just Safari - Apple mandates WebKit as the engine), so this
+  // is the only immediate feedback most users will actually see.
+  const justDecoded = ref(false)
 
   const detector = new BarcodeDetector({ formats: FORMATS })
   const cropCanvas = document.createElement('canvas')
@@ -94,9 +99,11 @@ export function useScanner({ onDecoded, videoRef }) {
         consecutiveErrors = 0
         if (barcodes.length > 0) {
           // Instant tactile confirmation that a code was recognized, without
-          // needing to look at the screen. Silently unsupported on iOS
-          // Safari (no Vibration API there at all) - harmless no-op.
+          // needing to look at the screen. Silently unsupported on iOS -
+          // harmless no-op there, works on Android.
           navigator.vibrate?.(50)
+          justDecoded.value = true
+          setTimeout(() => (justDecoded.value = false), 250)
           pause()
           onDecoded(barcodes[0].rawValue)
           return
@@ -150,5 +157,5 @@ export function useScanner({ onDecoded, videoRef }) {
   onMounted(start)
   onBeforeUnmount(stop)
 
-  return { isRunning, isPaused, errorMessage, pause, resume }
+  return { isRunning, isPaused, errorMessage, justDecoded, pause, resume }
 }
