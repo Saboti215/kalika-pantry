@@ -25,7 +25,7 @@ defineExpose({ pause, resume })
          exactly what gets scanned, not just a decorative aiming aid. -->
     <div
       class="pointer-events-none absolute rounded-2xl border-2 border-white/70 shadow-[0_0_0_9999px_rgba(0,0,0,0.35)]"
-      style="top: 35%; bottom: 35%; left: 10%; right: 10%"
+      style="top: 30%; bottom: 30%; left: 8%; right: 8%"
     />
   </div>
 </template>

@@ -1,9 +1,9 @@
 import { onMounted, onBeforeUnmount, ref } from 'vue'
 import Quagga from '@ericblade/quagga2'
 
-// Prioritized so EAN/UPC (our actual use case) are tried before CODE_128,
-// per the library's own guidance for biasing towards known-common formats.
-const READERS = ['ean_reader', 'ean_8_reader', 'upc_reader', 'upc_e_reader', 'code_128_reader']
+// Pantry products are virtually always EAN/UPC - CODE_128 dropped so every
+// frame spends its decode budget only on formats we'll actually see.
+const READERS = ['ean_reader', 'ean_8_reader', 'upc_reader', 'upc_e_reader']
 
 // Quagga2 has no built-in confidence gate; averaging the per-character error
 // rate from decodedCodes is the community-standard mitigation for false
@@ -40,12 +40,20 @@ export function useScanner({ onDecoded, containerRef }) {
         inputStream: {
           type: 'LiveStream',
           target: containerRef.value,
-          constraints: { facingMode: 'environment' },
+          // A higher-resolution stream keeps thin barcode bars distinguishable
+          // instead of blurring together - the biggest lever for read rate.
+          constraints: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
           // Restrict decoding to the same middle band the aiming reticle
-          // shows, so what the user frames is what actually gets scanned.
-          area: { top: '35%', bottom: '35%', left: '10%', right: '10%' },
+          // shows, so what the user frames is what actually gets scanned -
+          // also less area to search per frame, which itself speeds things up.
+          area: { top: '30%', bottom: '30%', left: '8%', right: '8%' },
         },
         decoder: { readers: READERS },
+        // 'large' assumes the product is held close to the camera (the
+        // expected scan-first distance) - fewer, bigger patches to search
+        // per frame than the 'medium' default, at the cost of missing
+        // barcodes held far away.
+        locator: { patchSize: 'large', halfSample: true },
         // Web workers need DOM access that isn't guaranteed across bundlers
         // and browsers, so decoding runs on the main thread.
         numOfWorkers: 0,
