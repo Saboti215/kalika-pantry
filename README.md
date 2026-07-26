@@ -7,7 +7,7 @@ Bestand mit einem Tap anpassen, fertig.
 ## Tech-Stack
 
 - Vue 3 (`<script setup>`) + Vite, Tailwind CSS
-- `@ericblade/quagga2` für kamerabasiertes Barcode-Scannen (spezialisiert auf 1D-Codes wie EAN/UPC - `html5-qrcode`/zxing-js liest QR-Codes zuverlässig, EAN-Codes aber nachweislich nicht)
+- `barcode-detector` für kamerabasiertes Barcode-Scannen - eine WebAssembly-kompilierte Version der echten ZXing-C++-Engine (deutlich schneller/präziser als die JS-Ports `html5-qrcode`/zxing-js oder `Quagga2`, die beide vorher erprobt und verworfen wurden)
 - Supabase (Postgres, Auth, Row Level Security) als Backend
 - Open Food Facts API als Fallback-Lookup für unbekannte EANs
 - `vite-plugin-pwa` für die PWA-Manifest/Service-Worker-Erzeugung

@@ -45,8 +45,10 @@ export default defineConfig({
       },
       workbox: {
         // The app requires network access (Supabase/Open Food Facts), so we only
-        // precache the app shell itself, not runtime API calls.
-        globPatterns: ['**/*.{js,css,html,svg,png,ico}'],
+        // precache the app shell itself, not runtime API calls. wasm is the
+        // ZXing barcode decoder - precaching it means the scanner works
+        // offline/instantly after the first visit instead of refetching it.
+        globPatterns: ['**/*.{js,css,html,svg,png,ico,wasm}'],
       },
     }),
   ],

@@ -1,69 +1,125 @@
 import { onMounted, onBeforeUnmount, ref } from 'vue'
-import Quagga from '@ericblade/quagga2'
+import { BarcodeDetector, prepareZXingModule } from 'barcode-detector/ponyfill'
+import zxingReaderWasmUrl from 'zxing-wasm/reader/zxing_reader.wasm?url'
 
-// Pantry products are virtually always EAN/UPC - CODE_128 dropped so every
-// frame spends its decode budget only on formats we'll actually see.
-const READERS = ['ean_reader', 'ean_8_reader', 'upc_reader', 'upc_e_reader']
+// Self-host the wasm binary (via Vite's asset pipeline, so it's fingerprinted
+// and precached by the service worker) instead of the library's jsDelivr CDN
+// default - a scan-first app shouldn't depend on a third-party CDN being up.
+prepareZXingModule({
+  overrides: {
+    locateFile: (path, prefix) => (path.endsWith('.wasm') ? zxingReaderWasmUrl : prefix + path),
+  },
+})
 
-// Quagga2 has no built-in confidence gate; averaging the per-character error
-// rate from decodedCodes is the community-standard mitigation for false
-// positives (see the library's README, "Handling false positives").
-const MAX_AVERAGE_ERROR = 0.15
+// Pantry products are virtually always EAN/UPC.
+const FORMATS = ['ean_13', 'ean_8', 'upc_a', 'upc_e']
 
-// Wraps Quagga2 (a scanner purpose-built for 1D barcodes - unlike
-// html5-qrcode/zxing-js, which is QR-first and unreliable at EAN/UPC) so the
-// camera feed can sit full-screen behind our own overlay, with just
-// pause()/resume() exposed to the scan-first flow.
-export function useScanner({ onDecoded, containerRef }) {
+// The middle band the aiming reticle shows, as fractions of the video's
+// native resolution - cropped out before decoding so what the user frames
+// is what actually gets scanned, and so the decoder searches fewer pixels.
+const CROP_AREA = { top: 0.3, bottom: 0.3, left: 0.08, right: 0.08 }
+
+// Runs our own lightweight capture loop against a real ZXing-C++ engine
+// compiled to WebAssembly - a completely different tier of speed and
+// accuracy than either html5-qrcode (zxing-js, a thin and unreliable JS
+// port) or Quagga2 (a pure-JS locator/decoder pipeline). We own the
+// <video> element directly instead of handing a container off to a
+// library, so pause()/resume() is just "stop/restart our own loop".
+export function useScanner({ onDecoded, videoRef }) {
   const isRunning = ref(false)
   const isPaused = ref(false)
   const errorMessage = ref('')
-  let isInitialized = false
 
-  function averageDecodeError(codeResult) {
-    const errors = codeResult.decodedCodes.map((entry) => entry.error).filter((error) => error !== undefined)
-    if (errors.length === 0) return 0
-    return errors.reduce((sum, error) => sum + error, 0) / errors.length
+  const detector = new BarcodeDetector({ formats: FORMATS })
+  const cropCanvas = document.createElement('canvas')
+  const cropCtx = cropCanvas.getContext('2d', { willReadFrequently: true })
+
+  let stream = null
+  let animationFrameId = null
+  let consecutiveErrors = 0
+  // detect() resolving with an empty array is the normal "no barcode in this
+  // frame" case - it only rejects on a real failure (e.g. the wasm module
+  // itself failing to load), which would otherwise retry silently forever.
+  const MAX_CONSECUTIVE_ERRORS = 10
+
+  function cropToScanArea() {
+    const video = videoRef.value
+    const videoWidth = video?.videoWidth
+    const videoHeight = video?.videoHeight
+    const displayWidth = video?.clientWidth
+    const displayHeight = video?.clientHeight
+    if (!videoWidth || !videoHeight || !displayWidth || !displayHeight) return null
+
+    // The <video> is styled with object-fit: cover, which - whenever the
+    // camera's native aspect ratio doesn't match the screen's (the common
+    // case) - crops away part of the frame before it's ever shown. Without
+    // reproducing that same crop here first, CROP_AREA's percentages are
+    // taken of the *uncropped* native frame, covering a much larger and
+    // differently-placed region than the reticle the user actually sees.
+    const videoAspect = videoWidth / videoHeight
+    const displayAspect = displayWidth / displayHeight
+
+    let visibleWidth = videoWidth
+    let visibleHeight = videoHeight
+    let visibleX = 0
+    let visibleY = 0
+
+    if (videoAspect > displayAspect) {
+      visibleWidth = videoHeight * displayAspect
+      visibleX = (videoWidth - visibleWidth) / 2
+    } else {
+      visibleHeight = videoWidth / displayAspect
+      visibleY = (videoHeight - visibleHeight) / 2
+    }
+
+    // Now crop down to the reticle's percentage of that visible area.
+    const left = visibleX + visibleWidth * CROP_AREA.left
+    const top = visibleY + visibleHeight * CROP_AREA.top
+    const width = visibleWidth * (1 - CROP_AREA.left - CROP_AREA.right)
+    const height = visibleHeight * (1 - CROP_AREA.top - CROP_AREA.bottom)
+
+    cropCanvas.width = width
+    cropCanvas.height = height
+    cropCtx.drawImage(video, left, top, width, height, 0, 0, width, height)
+    return cropCanvas
   }
 
-  function handleDetected(result) {
+  async function detectLoop() {
     if (isPaused.value) return
-    if (averageDecodeError(result.codeResult) > MAX_AVERAGE_ERROR) return
 
-    pause()
-    onDecoded(result.codeResult.code)
+    const frame = cropToScanArea()
+    if (frame) {
+      try {
+        const barcodes = await detector.detect(frame)
+        consecutiveErrors = 0
+        if (barcodes.length > 0) {
+          pause()
+          onDecoded(barcodes[0].rawValue)
+          return
+        }
+      } catch {
+        consecutiveErrors += 1
+        if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+          errorMessage.value = 'Barcode-Scanner konnte nicht geladen werden.'
+          return
+        }
+      }
+    }
+
+    animationFrameId = requestAnimationFrame(detectLoop)
   }
 
   async function start() {
     try {
-      await Quagga.init({
-        inputStream: {
-          type: 'LiveStream',
-          target: containerRef.value,
-          // A higher-resolution stream keeps thin barcode bars distinguishable
-          // instead of blurring together - the biggest lever for read rate.
-          constraints: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
-          // Restrict decoding to the same middle band the aiming reticle
-          // shows, so what the user frames is what actually gets scanned -
-          // also less area to search per frame, which itself speeds things up.
-          area: { top: '30%', bottom: '30%', left: '8%', right: '8%' },
-        },
-        decoder: { readers: READERS },
-        // 'large' assumes the product is held close to the camera (the
-        // expected scan-first distance) - fewer, bigger patches to search
-        // per frame than the 'medium' default, at the cost of missing
-        // barcodes held far away.
-        locator: { patchSize: 'large', halfSample: true },
-        // Web workers need DOM access that isn't guaranteed across bundlers
-        // and browsers, so decoding runs on the main thread.
-        numOfWorkers: 0,
-        locate: true,
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
       })
 
-      isInitialized = true
-      Quagga.onDetected(handleDetected)
-      Quagga.start()
+      videoRef.value.srcObject = stream
+      await videoRef.value.play()
+
       isRunning.value = true
+      detectLoop()
     } catch {
       errorMessage.value = 'Kamera konnte nicht gestartet werden. Bitte Kamera-Zugriff erlauben.'
     }
@@ -71,20 +127,19 @@ export function useScanner({ onDecoded, containerRef }) {
 
   function pause() {
     if (!isRunning.value || isPaused.value) return
-    Quagga.pause()
     isPaused.value = true
+    if (animationFrameId) cancelAnimationFrame(animationFrameId)
   }
 
   function resume() {
     if (!isRunning.value || !isPaused.value) return
-    Quagga.start()
     isPaused.value = false
+    detectLoop()
   }
 
   function stop() {
-    if (!isInitialized) return
-    Quagga.offDetected(handleDetected)
-    Quagga.stop()
+    if (animationFrameId) cancelAnimationFrame(animationFrameId)
+    stream?.getTracks().forEach((track) => track.stop())
     isRunning.value = false
   }
 
