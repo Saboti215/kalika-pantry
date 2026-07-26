@@ -2,6 +2,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useHouseholdStore } from '../stores/household'
 import KnownStockSheet from '../components/sheets/KnownStockSheet.vue'
+import AssignLocationSheet from '../components/sheets/AssignLocationSheet.vue'
 import ProductAvatar from '../components/ProductAvatar.vue'
 
 const household = useHouseholdStore()
@@ -11,15 +12,26 @@ const isLoading = ref(true)
 const searchQuery = ref('')
 const selectedLocationId = ref(null) // null = "Alle" (no location filter)
 const activeStock = ref(null) // row currently open in the adjust sheet, or null
+const activeAssignment = ref(null) // { product, excludedLocationIds } while adding another location, or null
+
+async function loadStock() {
+  stockRows.value = await household.fetchStockOverview()
+}
 
 onMounted(async () => {
-  stockRows.value = await household.fetchStockOverview()
+  await loadStock()
   isLoading.value = false
 })
+
+const hasActiveFilter = computed(() => searchQuery.value.trim() !== '' || selectedLocationId.value !== null)
 
 const filteredRows = computed(() => {
   const query = searchQuery.value.trim().toLowerCase()
   return stockRows.value.filter((row) => {
+    // Rows with quantity 0 stay in the database (so the location is
+    // remembered for the next scan) but are just noise here - only
+    // currently-in-stock items are worth showing in a "what do I have" search.
+    if (row.quantity <= 0) return false
     const matchesLocation = !selectedLocationId.value || row.locations?.id === selectedLocationId.value
     const matchesQuery = !query || row.products?.name?.toLowerCase().includes(query)
     return matchesLocation && matchesQuery
@@ -30,21 +42,36 @@ function openStock(row) {
   activeStock.value = {
     ean: row.product_ean,
     product: row.products,
-    location: row.locations,
-    quantity: row.quantity,
+    stocks: [{ location: row.locations, quantity: row.quantity }],
   }
 }
 
-// KnownStockSheet reports back the quantity it settled on when it closes, so
-// the list behind it reflects any +1/-1 taps without a full reload.
-function onSheetClose(finalQuantity) {
-  if (activeStock.value && typeof finalQuantity === 'number') {
-    const row = stockRows.value.find(
-      (r) => r.product_ean === activeStock.value.ean && r.locations?.id === activeStock.value.location.id
-    )
-    if (row) row.quantity = finalQuantity
+// KnownStockSheet reports back every row's settled quantity when it closes,
+// so the list behind it reflects any +1/-1 taps without a full reload.
+function onSheetClose(updatedRows) {
+  if (Array.isArray(updatedRows) && activeStock.value) {
+    const ean = activeStock.value.ean
+    for (const { locationId, quantity } of updatedRows) {
+      const row = stockRows.value.find((r) => r.product_ean === ean && r.locations?.id === locationId)
+      if (row) row.quantity = quantity
+    }
   }
   activeStock.value = null
+}
+
+// A product can be stocked at more than one location - jumps from the
+// adjust sheet straight into the location grid, excluding spots it's
+// already at (the sheet already knows which ones those are).
+function onAddLocation({ product, excludedLocationIds }) {
+  activeStock.value = null
+  activeAssignment.value = { product, excludedLocationIds }
+}
+
+// A brand new stock row was likely just created at another location -
+// reload rather than patch, since we don't have that row's full joined data.
+async function onAssignmentClose() {
+  activeAssignment.value = null
+  await loadStock()
 }
 </script>
 
@@ -88,7 +115,10 @@ function onSheetClose(finalQuantity) {
       <p v-else-if="stockRows.length === 0" class="text-center text-slate-400">
         Noch keine Artikel erfasst - einfach scannen!
       </p>
-      <p v-else-if="filteredRows.length === 0" class="text-center text-slate-400">Keine Treffer.</p>
+      <p v-else-if="filteredRows.length === 0 && hasActiveFilter" class="text-center text-slate-400">
+        Keine Treffer.
+      </p>
+      <p v-else-if="filteredRows.length === 0" class="text-center text-slate-400">Gerade nichts vorrätig.</p>
 
       <ul v-else class="flex flex-col gap-2">
         <li v-for="row in filteredRows" :key="`${row.product_ean}-${row.locations.id}`">
@@ -112,6 +142,17 @@ function onSheetClose(finalQuantity) {
       </ul>
     </div>
 
-    <KnownStockSheet v-if="activeStock" :stock="activeStock" @close="onSheetClose" />
+    <KnownStockSheet
+      v-if="activeStock"
+      :stock="activeStock"
+      @close="onSheetClose"
+      @add-location="onAddLocation"
+    />
+    <AssignLocationSheet
+      v-if="activeAssignment"
+      :product="activeAssignment.product"
+      :excluded-location-ids="activeAssignment.excludedLocationIds"
+      @close="onAssignmentClose"
+    />
   </div>
 </template>

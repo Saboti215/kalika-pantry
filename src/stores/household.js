@@ -154,19 +154,25 @@ export const useHouseholdStore = defineStore('household', () => {
     const householdId = currentHouseholdId.value
 
     // 1. Is this product already assigned to a location in this household?
+    // A product can sit at more than one location, so every matching row
+    // comes back - the sheet shows one adjustable row per location instead
+    // of hiding all but the most recently touched one.
     const { data: stockRows, error: stockError } = await supabase
       .from('stock')
       .select('quantity, updated_at, locations(id, name, icon), products(ean, name, image_url)')
       .eq('household_id', householdId)
       .eq('product_ean', ean)
       .order('updated_at', { ascending: false })
-      .limit(1)
 
     if (stockError) throw stockError
 
     if (stockRows.length > 0) {
-      const [row] = stockRows
-      return { case: 'A', ean, product: row.products, location: row.locations, quantity: row.quantity }
+      return {
+        case: 'A',
+        ean,
+        product: stockRows[0].products,
+        stocks: stockRows.map((row) => ({ location: row.locations, quantity: row.quantity })),
+      }
     }
 
     // 2. Is the product itself already known in this household (no location yet)?
@@ -197,8 +203,12 @@ export const useHouseholdStore = defineStore('household', () => {
   }
 
   // Persists a product (upsert - works whether it came from our DB, Open
-  // Food Facts, or manual entry) and creates its first stock row at the
-  // chosen location with quantity 1. Used by the Fall B / Fall C 1-click flow.
+  // Food Facts, or manual entry) and creates its stock row at the chosen
+  // location with quantity 1. Used by the Fall B / Fall C 1-click flow, and
+  // by "add another location" on an already-placed product. A product can
+  // now legitimately sit at more than one location, so if a row already
+  // exists at this exact location we bump it via adjustStock instead of
+  // resetting it back down to 1.
   async function assignLocation(product, locationId) {
     const householdId = currentHouseholdId.value
 
@@ -213,12 +223,22 @@ export const useHouseholdStore = defineStore('household', () => {
     )
     if (upsertError) throw upsertError
 
+    const { data: existingRow, error: existingError } = await supabase
+      .from('stock')
+      .select('quantity')
+      .eq('household_id', householdId)
+      .eq('product_ean', product.ean)
+      .eq('location_id', locationId)
+      .maybeSingle()
+    if (existingError) throw existingError
+
+    if (existingRow) {
+      return adjustStock({ ean: product.ean, locationId, delta: 1 })
+    }
+
     const { data, error: stockError } = await supabase
       .from('stock')
-      .upsert(
-        { household_id: householdId, product_ean: product.ean, location_id: locationId, quantity: 1 },
-        { onConflict: 'household_id,product_ean,location_id' }
-      )
+      .insert({ household_id: householdId, product_ean: product.ean, location_id: locationId, quantity: 1 })
       .select('quantity, locations(id, name, icon)')
       .single()
 

@@ -4,37 +4,45 @@ import { useHouseholdStore } from '../../stores/household'
 import BottomSheet from './BottomSheet.vue'
 import ProductAvatar from '../ProductAvatar.vue'
 
-// Fall A: product and location are both already known - the 0-click flow.
+// Fall A: the product is known and already sits at one or more locations -
+// the 0-click flow. One adjustable row per location, so a product stocked
+// in several places lets the user pick which one to +1/-1 without guessing.
 const props = defineProps({
-  stock: { type: Object, required: true }, // { ean, product, location, quantity }
+  stock: { type: Object, required: true }, // { ean, product, stocks: [{ location, quantity }] }
 })
-const emit = defineEmits(['close'])
+const emit = defineEmits(['close', 'add-location'])
 
 const household = useHouseholdStore()
-const quantity = ref(props.stock.quantity)
+// Local, mutable copies - props are readonly and we need to update quantity
+// per row as the user taps without touching the parent's data.
+const rows = ref(props.stock.stocks.map((entry) => ({ ...entry })))
 const errorMessage = ref('')
 let closeTimeoutId = null
 
-// Gives the user a brief glimpse of the updated count before the sheet
-// closes and the camera takes back over - a rapid second tap just pushes
-// the auto-close out further instead of closing early.
-function scheduleClose() {
-  clearTimeout(closeTimeoutId)
-  // Reports the settled quantity so callers outside the scan flow (e.g. the
-  // Bestand search view) can update their own list without a reload.
-  closeTimeoutId = setTimeout(() => emit('close', quantity.value), 450)
+function currentState() {
+  return rows.value.map((row) => ({ locationId: row.location.id, quantity: row.quantity }))
 }
 
-async function adjust(delta) {
+// Gives the user a brief glimpse of the updated count before the sheet
+// closes and the camera takes back over - a rapid second tap (on the same
+// row or another one) just pushes the auto-close out further.
+function scheduleClose() {
   clearTimeout(closeTimeoutId)
-  const previousQuantity = quantity.value
-  quantity.value = Math.max(0, quantity.value + delta)
+  // Reports every row's settled quantity so callers outside the scan flow
+  // (e.g. the Bestand search view) can update their own list without a reload.
+  closeTimeoutId = setTimeout(() => emit('close', currentState()), 450)
+}
+
+async function adjust(row, delta) {
+  clearTimeout(closeTimeoutId)
+  const previousQuantity = row.quantity
+  row.quantity = Math.max(0, row.quantity + delta)
   errorMessage.value = ''
 
   try {
-    await household.adjustStock({ ean: props.stock.ean, locationId: props.stock.location.id, delta })
+    await household.adjustStock({ ean: props.stock.ean, locationId: row.location.id, delta })
   } catch {
-    quantity.value = previousQuantity
+    row.quantity = previousQuantity
     errorMessage.value = 'Konnte nicht gespeichert werden.'
     return
   }
@@ -42,37 +50,53 @@ async function adjust(delta) {
   scheduleClose()
 }
 
+// A product can be stocked at more than one location - this hands off to
+// the location-picker (Fall B) instead of closing, excluding spots it's
+// already at (i.e. every row already shown here).
+function onAddLocation() {
+  clearTimeout(closeTimeoutId)
+  emit('add-location', {
+    ean: props.stock.ean,
+    product: props.stock.product,
+    excludedLocationIds: rows.value.map((row) => row.location.id),
+  })
+}
+
 onBeforeUnmount(() => clearTimeout(closeTimeoutId))
 </script>
 
 <template>
-  <BottomSheet @close="emit('close', quantity)">
+  <BottomSheet @close="emit('close', currentState())">
     <div class="flex flex-col items-center gap-4 text-center">
-      <ProductAvatar :name="stock.product.name" :image-url="stock.product.image_url" :size="72" />
-      <div>
-        <p class="text-xl font-semibold">{{ stock.product.name }}</p>
-        <p class="text-slate-400">{{ stock.location.icon }} {{ stock.location.name }}</p>
-      </div>
+      <ProductAvatar :name="stock.product.name" :image-url="stock.product.image_url" :size="64" />
+      <p class="text-xl font-semibold">{{ stock.product.name }}</p>
 
-      <div class="flex w-full items-center justify-between gap-4">
-        <button
-          type="button"
-          class="flex h-24 flex-1 items-center justify-center rounded-2xl bg-slate-800 text-4xl font-bold transition active:scale-95 active:bg-slate-700"
-          @click="adjust(-1)"
-        >
-          −
-        </button>
-        <span class="w-16 text-4xl font-bold tabular-nums">{{ quantity }}</span>
-        <button
-          type="button"
-          class="flex h-24 flex-1 items-center justify-center rounded-2xl bg-emerald-500 text-4xl font-bold text-slate-950 transition active:scale-95"
-          @click="adjust(1)"
-        >
-          +
-        </button>
+      <div class="flex max-h-[55vh] w-full flex-col gap-4 overflow-y-auto">
+        <div v-for="row in rows" :key="row.location.id" class="flex flex-col gap-2">
+          <p class="text-sm text-slate-400">{{ row.location.icon }} {{ row.location.name }}</p>
+          <div class="flex w-full items-center justify-between gap-4">
+            <button
+              type="button"
+              class="flex h-16 flex-1 items-center justify-center rounded-2xl bg-slate-800 text-3xl font-bold transition active:scale-95 active:bg-slate-700"
+              @click="adjust(row, -1)"
+            >
+              −
+            </button>
+            <span class="w-14 text-3xl font-bold tabular-nums">{{ row.quantity }}</span>
+            <button
+              type="button"
+              class="flex h-16 flex-1 items-center justify-center rounded-2xl bg-emerald-500 text-3xl font-bold text-slate-950 transition active:scale-95"
+              @click="adjust(row, 1)"
+            >
+              +
+            </button>
+          </div>
+        </div>
       </div>
 
       <p v-if="errorMessage" class="text-sm text-red-400">{{ errorMessage }}</p>
+
+      <button type="button" class="text-sm text-emerald-400" @click="onAddLocation">+ Weiteren Lagerort</button>
     </div>
   </BottomSheet>
 </template>

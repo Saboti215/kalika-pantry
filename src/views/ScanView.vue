@@ -38,6 +38,14 @@ function onManualNameSubmitted(product) {
   lookupResult.value = { case: 'B', product }
   activeCase.value = 'B'
 }
+
+// A product can be stocked at more than one location - jumps from Fall A
+// straight into the Fall B grid, excluding locations it's already at
+// (the sheet already knows which ones those are, no extra fetch needed).
+function onAddLocation({ product, excludedLocationIds }) {
+  lookupResult.value = { case: 'B', product, excludedLocationIds }
+  activeCase.value = 'B'
+}
 </script>
 
 <template>
@@ -62,8 +70,18 @@ function onManualNameSubmitted(product) {
       <div class="rounded-full bg-black/60 px-4 py-2 text-sm text-white">Suche…</div>
     </div>
 
-    <KnownStockSheet v-if="activeCase === 'A'" :stock="lookupResult" @close="closeSheet" />
-    <AssignLocationSheet v-else-if="activeCase === 'B'" :product="lookupResult.product" @close="closeSheet" />
+    <KnownStockSheet
+      v-if="activeCase === 'A'"
+      :stock="lookupResult"
+      @close="closeSheet"
+      @add-location="onAddLocation"
+    />
+    <AssignLocationSheet
+      v-else-if="activeCase === 'B'"
+      :product="lookupResult.product"
+      :excluded-location-ids="lookupResult.excludedLocationIds || []"
+      @close="closeSheet"
+    />
     <ManualEntrySheet
       v-else-if="activeCase === 'C'"
       :ean="lookupResult.ean"
