@@ -45,12 +45,14 @@ export const useAuthStore = defineStore('auth', () => {
     if (error) throw error
   }
 
-  // Redeems the code from the login email. On success this sets the
-  // session internally and fires onAuthStateChange (already wired in init()),
-  // so session.value updates on its own - no extra plumbing needed here.
+  // Redeems the code from the login email. Sets session.value directly from
+  // the response rather than waiting on onAuthStateChange, whose timing
+  // relative to this call resolving isn't guaranteed - callers that navigate
+  // right after need session.value to already be current at that point.
   async function verifyLoginCode(email, code) {
-    const { error } = await supabase.auth.verifyOtp({ email, token: code, type: 'email' })
+    const { data, error } = await supabase.auth.verifyOtp({ email, token: code, type: 'email' })
     if (error) throw error
+    session.value = data.session
   }
 
   async function signOut() {

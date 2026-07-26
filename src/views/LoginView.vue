@@ -1,7 +1,9 @@
 <script setup>
 import { ref, nextTick } from 'vue'
+import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 
+const router = useRouter()
 const auth = useAuthStore()
 
 const step = ref('email') // 'email' | 'code'
@@ -38,7 +40,10 @@ async function verifyCode() {
 
   try {
     await auth.verifyLoginCode(email.value, code.value)
-    // Success: session updates via onAuthStateChange, router guard redirects.
+    // The router guard only runs on an actual navigation - updating
+    // session.value alone wouldn't move us off /login, so push explicitly.
+    // If there's no household yet, the guard redirects to onboarding itself.
+    await router.push({ name: 'scan' })
   } catch {
     errorMessage.value = 'Code ungültig oder abgelaufen.'
   } finally {
