@@ -147,6 +147,27 @@ export const useHouseholdStore = defineStore('household', () => {
     return data
   }
 
+  // Number of stock rows currently holding a nonzero quantity at this
+  // location - used to warn before a delete, since removing a location
+  // cascades and deletes those stock rows in the database (schema.sql,
+  // stock.location_id references locations(id) on delete cascade).
+  async function countStockAtLocation(locationId) {
+    const { count, error } = await supabase
+      .from('stock')
+      .select('*', { count: 'exact', head: true })
+      .eq('location_id', locationId)
+      .gt('quantity', 0)
+
+    if (error) throw error
+    return count ?? 0
+  }
+
+  async function deleteLocation(id) {
+    const { error } = await supabase.from('locations').delete().eq('id', id)
+    if (error) throw error
+    locations.value = locations.value.filter((location) => location.id !== id)
+  }
+
   // The scan-first lookup cascade: known stock -> known product -> Open Food
   // Facts -> unknown. Returns a discriminated { case: 'A' | 'B' | 'C', ... }
   // object that ScanView uses to pick which bottom sheet to show.
@@ -290,6 +311,8 @@ export const useHouseholdStore = defineStore('household', () => {
     fetchMembers,
     createLocation,
     updateLocation,
+    countStockAtLocation,
+    deleteLocation,
     lookupProduct,
     assignLocation,
     adjustStock,

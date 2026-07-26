@@ -15,6 +15,7 @@ const editingLocationId = ref(null)
 const editingName = ref('')
 const editingIcon = ref('')
 const copyFeedback = ref('')
+const deletingLocationId = ref(null)
 
 async function refreshMembers() {
   if (!household.currentHouseholdId) return
@@ -70,6 +71,29 @@ async function saveLocation() {
     icon: editingIcon.value.trim() || null,
   })
   editingLocationId.value = null
+}
+
+// Deleting a location cascades in the database and removes its stock rows
+// too, so this warns with a concrete count first rather than deleting silently.
+async function confirmDeleteLocation(location) {
+  if (deletingLocationId.value) return
+
+  deletingLocationId.value = location.id
+  try {
+    const stockCount = await household.countStockAtLocation(location.id)
+    const message =
+      stockCount > 0
+        ? `"${location.name}" löschen? ${stockCount} Artikel mit Bestand gehen dabei verloren.`
+        : `"${location.name}" löschen?`
+
+    if (!window.confirm(message)) return
+
+    await household.deleteLocation(location.id)
+  } catch (err) {
+    window.alert(err.message ?? 'Konnte nicht gelöscht werden.')
+  } finally {
+    deletingLocationId.value = null
+  }
 }
 
 async function onSignOut() {
@@ -134,10 +158,20 @@ async function onSignOut() {
                 Sichern
               </button>
             </div>
-            <button v-else type="button" class="flex w-full items-center gap-3 text-left" @click="startEditingLocation(location)">
-              <span class="text-xl">{{ location.icon || '📦' }}</span>
-              <span>{{ location.name }}</span>
-            </button>
+            <div v-else class="flex items-center gap-3">
+              <button type="button" class="flex flex-1 items-center gap-3 text-left" @click="startEditingLocation(location)">
+                <span class="text-xl">{{ location.icon || '📦' }}</span>
+                <span>{{ location.name }}</span>
+              </button>
+              <button
+                type="button"
+                class="shrink-0 text-sm text-red-400 disabled:opacity-50"
+                :disabled="deletingLocationId === location.id"
+                @click="confirmDeleteLocation(location)"
+              >
+                Löschen
+              </button>
+            </div>
           </li>
         </ul>
 
