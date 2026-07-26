@@ -12,7 +12,11 @@ const emit = defineEmits(['close'])
         <div class="absolute inset-0 bg-black/50" @click="dismissible && emit('close')" />
         <div
           class="sheet-panel absolute inset-x-0 bottom-0 rounded-t-3xl bg-slate-900 p-6 text-slate-100 shadow-2xl"
-          style="padding-bottom: max(1.5rem, env(safe-area-inset-bottom))"
+          style="
+            padding-bottom: max(1.5rem, env(safe-area-inset-bottom));
+            padding-left: max(1.5rem, env(safe-area-inset-left));
+            padding-right: max(1.5rem, env(safe-area-inset-right));
+          "
         >
           <div class="mx-auto mb-4 h-1.5 w-12 rounded-full bg-slate-700" />
           <slot />

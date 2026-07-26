@@ -66,7 +66,7 @@ function onAddLocation({ product, excludedLocationIds }) {
       ⚙️
     </router-link>
 
-    <div v-if="isLookingUp" class="absolute inset-x-0 bottom-10 flex justify-center">
+    <div v-if="isLookingUp" class="absolute inset-x-0 bottom-[max(2.5rem,env(safe-area-inset-bottom))] flex justify-center">
       <div class="rounded-full bg-black/60 px-4 py-2 text-sm text-white">Suche…</div>
     </div>
 

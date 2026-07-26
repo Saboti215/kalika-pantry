@@ -16,3 +16,16 @@ body {
   overscroll-behavior: none;
   -webkit-tap-highlight-color: transparent;
 }
+
+/* iOS/Android PWA safe areas (Dynamic Island, notches, home-indicator /
+   gesture-nav bar). Only non-zero when viewport-fit=cover is set (see
+   index.html) and the app runs standalone (installed to homescreen) -
+   resolves to 0 in a regular browser tab, where the OS chrome already
+   reserves that space. Plain CSS environment variables, not iOS-specific -
+   the same rule works unmodified on Android. */
+.safe-area-view {
+  padding-top: max(2rem, env(safe-area-inset-top, 0px));
+  padding-right: max(1.5rem, env(safe-area-inset-right, 0px));
+  padding-bottom: max(2rem, env(safe-area-inset-bottom, 0px));
+  padding-left: max(1.5rem, env(safe-area-inset-left, 0px));
+}

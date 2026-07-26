@@ -59,7 +59,7 @@ function changeEmail() {
 </script>
 
 <template>
-  <div class="flex min-h-screen flex-col items-center justify-center gap-8 bg-slate-950 px-6 text-slate-100">
+  <div class="safe-area-view flex min-h-screen flex-col items-center justify-center gap-8 bg-slate-950 text-slate-100">
     <div class="text-center">
       <h1 class="text-3xl font-semibold">Kalika Pantry</h1>
       <p class="mt-2 text-slate-400">Dein Haushaltsvorrat, immer im Blick.</p>

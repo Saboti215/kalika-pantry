@@ -36,7 +36,7 @@ async function submit() {
 </script>
 
 <template>
-  <div class="flex min-h-screen flex-col items-center justify-center gap-6 bg-slate-950 px-6 text-slate-100">
+  <div class="safe-area-view flex min-h-screen flex-col items-center justify-center gap-6 bg-slate-950 text-slate-100">
     <div class="text-center">
       <h1 class="text-2xl font-semibold">Willkommen!</h1>
       <p class="mt-1 text-slate-400">Leg einen Haushalt an oder tritt einem bei.</p>

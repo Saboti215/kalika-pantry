@@ -79,7 +79,7 @@ async function onSignOut() {
 </script>
 
 <template>
-  <div class="min-h-screen bg-slate-950 px-6 py-8 text-slate-100">
+  <div class="safe-area-view min-h-screen bg-slate-950 text-slate-100">
     <div class="mx-auto flex max-w-sm flex-col gap-8">
       <header class="flex items-center justify-between">
         <h1 class="text-2xl font-semibold">Einstellungen</h1>
