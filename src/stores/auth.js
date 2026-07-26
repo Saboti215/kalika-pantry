@@ -28,15 +28,28 @@ export const useAuthStore = defineStore('auth', () => {
     return initPromise
   }
 
-  async function signInWithMagicLink(email) {
+  // Triggers the login email - which (once the Magic Link template in the
+  // Supabase dashboard includes {{ .Token }}) contains both a clickable link
+  // and a code redeemable via verifyLoginCode(). Same underlying token
+  // either way; the template alone decides what the email shows.
+  async function requestLoginCode(email) {
     // Redirect back to wherever the app is currently hosted (localhost during
     // dev, the GitHub Pages URL in production) - without the hash route, so
     // Supabase's ?code=... query param lands before vue-router's #/ segment.
+    // Only relevant if the user clicks the link instead of typing the code.
     const redirectTo = `${window.location.origin}${window.location.pathname}`
     const { error } = await supabase.auth.signInWithOtp({
       email,
       options: { emailRedirectTo: redirectTo },
     })
+    if (error) throw error
+  }
+
+  // Redeems the code from the login email. On success this sets the
+  // session internally and fires onAuthStateChange (already wired in init()),
+  // so session.value updates on its own - no extra plumbing needed here.
+  async function verifyLoginCode(email, code) {
+    const { error } = await supabase.auth.verifyOtp({ email, token: code, type: 'email' })
     if (error) throw error
   }
 
@@ -52,7 +65,8 @@ export const useAuthStore = defineStore('auth', () => {
     userEmail,
     userId,
     init,
-    signInWithMagicLink,
+    requestLoginCode,
+    verifyLoginCode,
     signOut,
   }
 })

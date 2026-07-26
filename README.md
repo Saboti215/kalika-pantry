@@ -22,7 +22,21 @@ Bestand mit einem Tap anpassen, fertig.
    und ausführen (**Run**). Das legt alle Tabellen, RLS-Policies und RPC-Funktionen an.
    Das Skript ist idempotent - erneutes Ausführen bei Änderungen ist unproblematisch.
 4. Unter **Authentication → Providers** sicherstellen, dass **Email** aktiviert ist.
-   Für Magic-Link-Login reicht die Standardkonfiguration.
+   Für den Login-Flow (Code *und* Link, siehe unten) muss zusätzlich das
+   E-Mail-Template angepasst werden: **Authentication → Email Templates →
+   Magic Link** öffnen und den Body um `{{ .Token }}` ergänzen, z. B.:
+
+   ```html
+   <h2>Dein Anmeldecode</h2>
+   <p style="font-size: 28px; letter-spacing: 4px;"><strong>{{ .Token }}</strong></p>
+   <p>Gib diesen Code in der App ein, oder klicke direkt auf den Link:</p>
+   <p><a href="{{ .ConfirmationURL }}">Anmelden</a></p>
+   ```
+
+   Code und Link teilen sich denselben Token - wird einer der beiden Wege
+   genutzt, wird der jeweils andere ungültig (normales Single-Use-Verhalten).
+   Die Gültigkeitsdauer beider Wege steht unter **Authentication → Providers
+   → Email → OTP Expiry** (Standard: 1 Stunde).
 5. Unter **Authentication → URL Configuration**:
    - **Site URL**: die spätere GitHub-Pages-URL eintragen, z. B.
      `https://<dein-github-user>.github.io/kalika-pantry/`

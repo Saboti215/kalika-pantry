@@ -1,26 +1,55 @@
 <script setup>
-import { ref } from 'vue'
+import { ref, nextTick } from 'vue'
 import { useAuthStore } from '../stores/auth'
 
 const auth = useAuthStore()
 
+const step = ref('email') // 'email' | 'code'
 const email = ref('')
-const status = ref('idle') // idle | sending | sent | error
+const code = ref('')
+const isSubmitting = ref(false)
 const errorMessage = ref('')
+const codeInputRef = ref(null)
 
-async function submit() {
+async function requestCode() {
   if (!email.value) return
 
-  status.value = 'sending'
+  isSubmitting.value = true
   errorMessage.value = ''
 
   try {
-    await auth.signInWithMagicLink(email.value)
-    status.value = 'sent'
+    await auth.requestLoginCode(email.value)
+    step.value = 'code'
+    code.value = ''
+    await nextTick()
+    codeInputRef.value?.focus()
   } catch (err) {
-    status.value = 'error'
     errorMessage.value = err.message ?? 'Unbekannter Fehler'
+  } finally {
+    isSubmitting.value = false
   }
+}
+
+async function verifyCode() {
+  if (!code.value) return
+
+  isSubmitting.value = true
+  errorMessage.value = ''
+
+  try {
+    await auth.verifyLoginCode(email.value, code.value)
+    // Success: session updates via onAuthStateChange, router guard redirects.
+  } catch {
+    errorMessage.value = 'Code ungültig oder abgelaufen.'
+  } finally {
+    isSubmitting.value = false
+  }
+}
+
+function changeEmail() {
+  step.value = 'email'
+  code.value = ''
+  errorMessage.value = ''
 }
 </script>
 
@@ -31,7 +60,7 @@ async function submit() {
       <p class="mt-2 text-slate-400">Dein Haushaltsvorrat, immer im Blick.</p>
     </div>
 
-    <form v-if="status !== 'sent'" class="w-full max-w-sm space-y-3" @submit.prevent="submit">
+    <form v-if="step === 'email'" class="w-full max-w-sm space-y-3" @submit.prevent="requestCode">
       <input
         v-model="email"
         type="email"
@@ -45,20 +74,45 @@ async function submit() {
       />
       <button
         type="submit"
-        :disabled="status === 'sending'"
+        :disabled="isSubmitting"
         class="w-full rounded-2xl bg-emerald-500 px-4 py-4 text-lg font-medium text-slate-950 transition active:scale-[0.98] disabled:opacity-50"
       >
-        {{ status === 'sending' ? 'Wird gesendet…' : 'Login-Link senden' }}
+        {{ isSubmitting ? 'Wird gesendet…' : 'Code anfordern' }}
       </button>
-      <p v-if="status === 'error'" class="text-center text-sm text-red-400">{{ errorMessage }}</p>
+      <p v-if="errorMessage" class="text-center text-sm text-red-400">{{ errorMessage }}</p>
     </form>
 
-    <div v-else class="max-w-sm text-center">
-      <p class="text-lg">📬 Check deine E-Mails!</p>
-      <p class="mt-2 text-slate-400">
-        Wir haben einen Login-Link an <strong class="text-slate-200">{{ email }}</strong> geschickt. Öffne ihn auf
-        diesem Gerät.
+    <form v-else class="w-full max-w-sm space-y-3 text-center" @submit.prevent="verifyCode">
+      <p class="text-slate-300">
+        Wir haben einen Code an <strong class="text-slate-100">{{ email }}</strong> geschickt.
       </p>
-    </div>
+      <input
+        ref="codeInputRef"
+        v-model="code"
+        type="text"
+        required
+        inputmode="numeric"
+        autocomplete="one-time-code"
+        maxlength="8"
+        enterkeyhint="done"
+        placeholder="12345678"
+        class="w-full rounded-2xl border border-slate-700 bg-slate-900 px-4 py-4 text-center text-xl tracking-[0.35em] outline-none focus:border-emerald-500"
+      />
+      <button
+        type="submit"
+        :disabled="isSubmitting"
+        class="w-full rounded-2xl bg-emerald-500 px-4 py-4 text-lg font-medium text-slate-950 transition active:scale-[0.98] disabled:opacity-50"
+      >
+        {{ isSubmitting ? 'Prüfe…' : 'Bestätigen' }}
+      </button>
+      <p v-if="errorMessage" class="text-sm text-red-400">{{ errorMessage }}</p>
+
+      <p class="text-sm text-slate-500">Der Link in der E-Mail funktioniert alternativ auch.</p>
+
+      <div class="flex justify-center gap-4 text-sm">
+        <button type="button" class="text-emerald-400" @click="requestCode">Code erneut senden</button>
+        <button type="button" class="text-slate-400" @click="changeEmail">Andere E-Mail-Adresse</button>
+      </div>
+    </form>
   </div>
 </template>
