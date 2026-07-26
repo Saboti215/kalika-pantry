@@ -45,6 +45,13 @@ function onManualNameSubmitted(product) {
     <Scanner ref="scannerRef" @decoded="onDecoded" />
 
     <router-link
+      :to="{ name: 'stock' }"
+      class="absolute left-4 top-[max(1rem,env(safe-area-inset-top))] flex h-11 w-11 items-center justify-center rounded-full bg-black/50 text-xl text-white backdrop-blur"
+    >
+      🔍
+    </router-link>
+
+    <router-link
       :to="{ name: 'settings' }"
       class="absolute right-4 top-[max(1rem,env(safe-area-inset-top))] flex h-11 w-11 items-center justify-center rounded-full bg-black/50 text-xl text-white backdrop-blur"
     >

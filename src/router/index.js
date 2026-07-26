@@ -23,6 +23,11 @@ const router = createRouter({
       component: () => import('../views/OnboardingView.vue'),
     },
     {
+      path: '/bestand',
+      name: 'stock',
+      component: () => import('../views/StockView.vue'),
+    },
+    {
       path: '/settings',
       name: 'settings',
       component: () => import('../views/SettingsView.vue'),

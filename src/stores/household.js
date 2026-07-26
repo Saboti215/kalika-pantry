@@ -240,6 +240,20 @@ export const useHouseholdStore = defineStore('household', () => {
     return data
   }
 
+  // Full current-stock list for the Bestand (search/browse) view - loaded
+  // once per view visit, filtered client-side by name/location so browsing
+  // and searching stay instant with no per-keystroke network round trips.
+  async function fetchStockOverview() {
+    const { data, error } = await supabase
+      .from('stock')
+      .select('quantity, updated_at, product_ean, products(ean, name, image_url), locations(id, name, icon)')
+      .eq('household_id', currentHouseholdId.value)
+      .order('updated_at', { ascending: false })
+
+    if (error) throw error
+    return data
+  }
+
   return {
     memberships,
     currentHouseholdId,
@@ -259,5 +273,6 @@ export const useHouseholdStore = defineStore('household', () => {
     lookupProduct,
     assignLocation,
     adjustStock,
+    fetchStockOverview,
   }
 })

@@ -20,7 +20,9 @@ let closeTimeoutId = null
 // the auto-close out further instead of closing early.
 function scheduleClose() {
   clearTimeout(closeTimeoutId)
-  closeTimeoutId = setTimeout(() => emit('close'), 450)
+  // Reports the settled quantity so callers outside the scan flow (e.g. the
+  // Bestand search view) can update their own list without a reload.
+  closeTimeoutId = setTimeout(() => emit('close', quantity.value), 450)
 }
 
 async function adjust(delta) {
@@ -44,7 +46,7 @@ onBeforeUnmount(() => clearTimeout(closeTimeoutId))
 </script>
 
 <template>
-  <BottomSheet @close="emit('close')">
+  <BottomSheet @close="emit('close', quantity)">
     <div class="flex flex-col items-center gap-4 text-center">
       <ProductAvatar :name="stock.product.name" :image-url="stock.product.image_url" :size="72" />
       <div>
